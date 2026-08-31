@@ -12,22 +12,24 @@ columns = [
     "Extent",
     "Class",
 ]
+
+# Dataset cargado desde archivo arff
+# (leído con read_csv pero salto las primeras líneas con metadatos)
 df = pd.read_csv(
     "Rice_Cammeo_Osmancik.arff",
     skiprows=16,
     names=columns,
 )
 
-# EXTRACT y EDA
-# Información general del dataset apenas importado
-print("\nInformación general:")
+print("\nInfo general del dataset:")
 df.info()
-print(df.head())
-print(df.tail())
-print(df.shape)
-print(df.columns)
 
-# Valores faltantes
+print("\nForma del dataset:")
+print(df.shape)
+
+
+# EDA Y REVISIÓN DE CALIDAD DE LOS DATOS
+# Valores faltantes que requieran limpieza o imputación
 print("\nValores faltantes:")
 print(df.isnull().sum())
 
@@ -43,8 +45,7 @@ print(df["Class"].unique())
 print("\nDistribución de clases:")
 print(df["Class"].value_counts())
 
-# Porcentaje de cada clase
-print("\nDistribución porcentual:")
+print("\nDistribución porcentual de clases:")
 print(df["Class"].value_counts(normalize=True) * 100)
 
 # Estadística descriptiva de las variables numéricas
@@ -59,9 +60,12 @@ print("\nMedianas por clase:")
 print(df.groupby("Class").median())
 
 
-for i in columns[:-1]:
-    cammeo = df[df["Class"] == "Cammeo"][i]
-    osmancik = df[df["Class"] == "Osmancik"][i]
+# EDA: DISTRIBUCIÓN DE FEATURES POR CLASE
+# Histogramas para comparar distribuciones de cada
+# característica entre las 2 clases de arroz
+for feature in columns[:-1]:
+    cammeo = df[df["Class"] == "Cammeo"][feature]
+    osmancik = df[df["Class"] == "Osmancik"][feature]
 
     plt.figure(figsize=(8, 5))
 
@@ -79,19 +83,27 @@ for i in columns[:-1]:
         label="Osmancik",
     )
 
-    plt.xlabel(i)
+    plt.xlabel(feature)
     plt.ylabel("Frequency")
-    plt.title(f"Distribución de {i} por clase")
+    plt.title(f"Distribución de {feature} por clase")
     plt.legend()
 
-    plt.savefig("histograms/" + i + ".png")
+    plt.savefig(f"histograms/{feature}.png")
+    plt.close()
 
 
+# EDA: CORRELACIÓN ENTRE VARIABLES
+# Class se excluye porque contiene etiquetas categóricas
+# y no es numérica
 numeric_df = df.drop(columns=["Class"])
+
+# Matriz de correlación de Pearson para detectar
+# relaciones lineales y posibles variables redundantes
 correlation_matrix = numeric_df.corr()
 print("\nMatriz de correlación:")
 print(correlation_matrix.round(3))
 
+# Plot de la matriz de correlación
 plt.figure(figsize=(9, 7))
 
 plt.imshow(correlation_matrix, cmap="coolwarm", vmin=-1, vmax=1)
@@ -116,6 +128,9 @@ plt.tight_layout()
 plt.savefig("histograms/correlation_matrix.png")
 plt.close()
 
+
+# EDA: RELACIONES ENTRE FEATURES SELECCIONADAS
+# Relaciones relevantes identificadas mediante la matriz de correlación
 pairs = [
     ("Area", "Convex Area"),
     ("Perimeter", "Major Axis Length"),
@@ -139,55 +154,43 @@ for x_feature, y_feature in pairs:
     plt.ylabel(y_feature)
     plt.title(f"{x_feature} vs {y_feature}")
     plt.legend()
-    plt.savefig("histograms/scatterplots-" + x_feature + "-vs-" + y_feature + ".png")
+
+    plt.savefig(f"histograms/scatterplot-{x_feature}-vs-{y_feature}.png")
+    plt.close()
+
 
 # TRANSFORM
-# Codificación de clases
-# 0: Osmancik, 1: Cammeo
-
+# Para la regresión logística se le asigna 0 a Osmancik y 1 a Cammeo
 df["Class"] = df["Class"].map({"Osmancik": 0, "Cammeo": 1})
-print(df["Class"].value_counts())
 
 # Como el dataset viene ordenado, se lleva a cabo un shuffle
 np.random.seed(67)
 indices = np.random.permutation(len(df))
 df_shuffled = df.iloc[indices].reset_index(drop=True)
-print("\nDataset después del shuffle:")
-print(df_shuffled.head())
 
-# Separación de X y Y / train y test
+# Separación del dataset en 80% para entrenamiento y 20% para testing
 train_size = int(len(df_shuffled) * 0.8)
 
 train_df = df_shuffled.iloc[:train_size]
 test_df = df_shuffled.iloc[train_size:]
 
+# Separación de las variables predictoras X y de la variable objetivo y
 X_train = train_df.drop(columns=["Class"]).to_numpy()
 X_test = test_df.drop(columns=["Class"]).to_numpy()
 
 y_train = train_df["Class"].to_numpy()
 y_test = test_df["Class"].to_numpy()
 
-print(X_train.shape, y_train.shape)
-print(X_test.shape, y_test.shape)
+print("\nDimensiones de los conjuntos:")
+print("X_train:", X_train.shape)
+print("y_train:", y_train.shape)
+print("X_test:", X_test.shape)
+print("y_test:", y_test.shape)
 
 
-# MODELO DE REGRESIÓN LOGÍSTICA
-def sigmoid(z):
-    return 1 / (1 + np.exp(-z))
-
-
-def predict_probability(X, weights, bias):
-    z = np.dot(X, weights) + bias
-    return sigmoid(z)
-
-
-def binary_cross_entropy(y, y_hat):
-    epsilon = 1e-15
-    y_hat = np.clip(y_hat, epsilon, 1 - epsilon)
-
-    return -np.mean(y * np.log(y_hat) + (1 - y) * np.log(1 - y_hat))
-
-
+# ESCALAMIENTO
+# Ya que las variables presentan escalas distintas,
+# se aplica mean scaling para estabilizar la gradiente descendente
 def mean_scaling(X_train, X_test):
     mean = np.mean(X_train, axis=0)
     max_val = np.max(X_train, axis=0)
@@ -201,6 +204,29 @@ def mean_scaling(X_train, X_test):
 X_train, X_test = mean_scaling(X_train, X_test)
 
 
+# MODELO DE REGRESIÓN LOGÍSTICA
+# Función sigmoide (convierte valores a una probabilidad entre 0 y 1)
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+
+# Función para calcular la combinación lineal de las features y aplicar la sigmoide
+def predict_probability(X, weights, bias):
+    z = np.dot(X, weights) + bias
+    return sigmoid(z)
+
+
+# Función para calcular el costo mediante cross entropy
+def binary_cross_entropy(y, y_hat):
+    epsilon = 1e-15
+
+    # Se evitan valores iguales a 0 o 1 para no calcular log(0)
+    y_hat = np.clip(y_hat, epsilon, 1 - epsilon)
+
+    return -np.mean(y * np.log(y_hat) + (1 - y) * np.log(1 - y_hat))
+
+
+# Función para entrenar los pesos y el bias mediante gradiente descendente por batch
 def train_logistic_regression(X, y, learning_rate, epochs):
     n_samples, n_features = X.shape
 
@@ -234,17 +260,20 @@ def train_logistic_regression(X, y, learning_rate, epochs):
     return weights, bias, losses
 
 
+# Función para convertir las probabilidades generadas por la sigmoide en clases
+# Umbral de clasificación utilizado: 0.5
 def predict(X, weights, bias):
     probabilities = predict_probability(X, weights, bias)
 
     return (probabilities >= 0.5).astype(int)
 
 
+# Función para calcular el porcentaje de observaciones clasificadas correctamente
 def accuracy(y_true, y_pred):
     return np.mean(y_true == y_pred) * 100
 
 
-### Prueba
+# ENTRENAMIENTO Y EVALUACIÓN
 
 learning_rate = 0.03
 epochs = 3000
@@ -259,6 +288,7 @@ print(weights)
 print("\nBias:")
 print(bias)
 
+# Predicciones sobre datos utilizados y no utilizados durante el entrenamiento
 y_pred_train = predict(X_train, weights, bias)
 
 y_pred_test = predict(X_test, weights, bias)
@@ -267,6 +297,10 @@ print("\nAccuracy train:", accuracy(y_train, y_pred_train))
 
 print("Accuracy test:", accuracy(y_test, y_pred_test))
 
+
+# VISUALIZACIÓN DEL ENTRENAMIENTO
+# Se puede saber que la gradiente descendente se ajusta progresivamente
+# a los parámetros por la disminución del costo
 plt.figure(figsize=(8, 5))
 
 plt.plot(losses)
@@ -279,7 +313,10 @@ plt.savefig("training_loss.png")
 plt.close()
 
 
-# Predicciones
+# PREDICCIONES DE EJEMPLO
+# Para el ejemplo, se muestran diez predicciones individuales del conjunto de prueba
+# y se comparan con sus valores reales.
+# Además, se muestran las probabilidades de que cada observación pertenezca a la clase Cammeo.
 probabilities = predict_probability(X_test, weights, bias)
 
 for i in range(10):
