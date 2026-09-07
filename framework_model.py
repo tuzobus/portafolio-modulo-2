@@ -1,8 +1,6 @@
 import pandas as pd
-import numpy as np
 
 from sklearn.model_selection import GridSearchCV, train_test_split, StratifiedKFold
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 
@@ -51,17 +49,6 @@ X_train, X_test, y_train, y_test = train_test_split(
 X_train, X_val, y_train, y_val = train_test_split(
     X_train, y_train, test_size=0.25, random_state=67, stratify=y_train
 )
-
-
-# ESCALAMIENTO CON FRAMEWORK
-# Ya que las variables presentan escalas distintas,
-# se aplica StandardScaler para estabilizar las medias
-# y varianzas de las variables predictoras.
-scaler = StandardScaler()
-
-X_train = scaler.fit_transform(X_train)
-X_val = scaler.transform(X_val)
-X_test = scaler.transform(X_test)
 
 
 # MODELO DE RANDOM FOREST
