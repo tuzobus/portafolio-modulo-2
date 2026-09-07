@@ -70,11 +70,15 @@ model = RandomForestClassifier(random_state=67)
 
 model.fit(X_train, y_train)
 
+train_pred = model.predict(X_train)
 val_pred = model.predict(X_val)
 
+train_accuracy = accuracy_score(y_train, train_pred)
 val_accuracy = accuracy_score(y_val, val_pred)
 
+print("Train accuracy:", train_accuracy)
 print("Validation accuracy:", val_accuracy)
+print("Generalization gap:", train_accuracy - val_accuracy)
 
 print("\nClassification report:")
 print(classification_report(y_val, val_pred))
@@ -98,28 +102,39 @@ model = RandomForestClassifier(random_state=67)
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=67)
 
 grid_search = GridSearchCV(
-    model, param_grid, cv=cv, scoring="accuracy", n_jobs=-1, verbose=2
+    model, param_grid, cv=cv, scoring="accuracy", n_jobs=-1, verbose=0
 )
 grid_search.fit(X_train, y_train)
 
 best = grid_search.best_estimator_
+
+train_pred = best.predict(X_train)
+val_pred = best.predict(X_val)
+
+train_accuracy = accuracy_score(y_train, train_pred)
+val_accuracy = accuracy_score(y_val, val_pred)
+
+print("\nTUNED MODEL")
+print("Train accuracy:", train_accuracy)
+print("Validation accuracy:", val_accuracy)
+print("Generalization gap:", train_accuracy - val_accuracy)
 
 print("Best parameters:", grid_search.best_params_)
 print("Best score:", grid_search.best_score_)
 
 
 # Actualización del modelo con mejores hiperparámetros encontrados
-val_pred = best.predict(X_test)
+test_pred = best.predict(X_test)
+test_accuracy = accuracy_score(y_test, test_pred)
 
-val_accuracy = accuracy_score(y_test, val_pred)
-
-print("Validation accuracy:", val_accuracy)
+print("\nFINAL TEST")
+print("Test accuracy:", test_accuracy)
 
 print("\nClassification report:")
-print(classification_report(y_test, val_pred))
+print(classification_report(y_test, test_pred))
 
 print("\nConfusion matrix:")
-print(confusion_matrix(y_test, val_pred))
+print(confusion_matrix(y_test, test_pred))
 
 # En caso de que no se desee correr la búsqueda de hiperparámetros,
 # se pueden comentar los 2 bloques anteriores y descomentar el siguiente,
@@ -129,16 +144,36 @@ print(confusion_matrix(y_test, val_pred))
 # model = RandomForestClassifier(
 #     class_weight=None,
 #     max_depth=5,
-#     max_features='sqrt',
+#     max_features="sqrt",
 #     min_samples_leaf=4,
 #     min_samples_split=2,
 #     n_estimators=100,
+#     random_state=67,
 # )
+#
 # model.fit(X_train, y_train)
-# val_pred = model.predict(X_test)
-# val_accuracy = accuracy_score(y_test, val_pred)
+#
+# # Train y Validation para diagnosticar fitting
+# train_pred = model.predict(X_train)
+# val_pred = model.predict(X_val)
+#
+# train_accuracy = accuracy_score(y_train, train_pred)
+# val_accuracy = accuracy_score(y_val, val_pred)
+#
+# print("\nTUNED MODEL")
+# print("Train accuracy:", train_accuracy)
 # print("Validation accuracy:", val_accuracy)
+# print("Generalization gap:", train_accuracy - val_accuracy)
+#
+# # Evaluación final
+# test_pred = model.predict(X_test)
+# test_accuracy = accuracy_score(y_test, test_pred)
+#
+# print("\nFINAL TEST")
+# print("Test accuracy:", test_accuracy)
+#
 # print("\nClassification report:")
-# print(classification_report(y_test, val_pred))
+# print(classification_report(y_test, test_pred))
+#
 # print("\nConfusion matrix:")
-# print(confusion_matrix(y_test, val_pred))
+# print(confusion_matrix(y_test, test_pred))
