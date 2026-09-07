@@ -214,18 +214,22 @@ print("y_test:", y_test.shape)
 
 # ESCALAMIENTO
 # Ya que las variables presentan escalas distintas,
-# se aplica mean scaling para estabilizar la gradiente descendente
-def mean_scaling(X_train, X_test):
+# se aplica z-score scaling para estabilizar la gradiente descendente
+def z_score_scaling(X_train, X_val, X_test):
     mean = np.mean(X_train, axis=0)
-    max_val = np.max(X_train, axis=0)
+    std = np.std(X_train, axis=0)
 
-    X_train_scaled = (X_train - mean) / max_val
-    X_test_scaled = (X_test - mean) / max_val
+    # Reemplaza ceros en std con 1 para evitar división por cero
+    std[std == 0] = 1
 
-    return X_train_scaled, X_test_scaled
+    X_train_scaled = (X_train - mean) / std
+    X_val_scaled = (X_val - mean) / std
+    X_test_scaled = (X_test - mean) / std
+
+    return X_train_scaled, X_val_scaled, X_test_scaled
 
 
-X_train, X_test = mean_scaling(X_train, X_test)
+X_train, X_val, X_test = z_score_scaling(X_train, X_val, X_test)
 
 
 # MODELO DE REGRESIÓN LOGÍSTICA
