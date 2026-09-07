@@ -119,6 +119,12 @@ print("Train accuracy:", train_accuracy)
 print("Validation accuracy:", val_accuracy)
 print("Generalization gap:", train_accuracy - val_accuracy)
 
+print("\nValidation classification report:")
+print(classification_report(y_val, val_pred))
+
+print("\nValidation confusion matrix:")
+print(confusion_matrix(y_val, val_pred))
+
 print("Best parameters:", grid_search.best_params_)
 print("Best score:", grid_search.best_score_)
 
@@ -164,6 +170,12 @@ print(confusion_matrix(y_test, test_pred))
 # print("Train accuracy:", train_accuracy)
 # print("Validation accuracy:", val_accuracy)
 # print("Generalization gap:", train_accuracy - val_accuracy)
+#
+# print("\nValidation classification report:")
+# print(classification_report(y_val, val_pred))
+#
+# print("\nValidation confusion matrix:")
+# print(confusion_matrix(y_val, val_pred))
 #
 # # Evaluación final
 # test_pred = model.predict(X_test)
