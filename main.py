@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+OUTPUT_DIR = Path("histograms")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 columns = [
     "Area",
