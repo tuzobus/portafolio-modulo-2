@@ -134,7 +134,9 @@ plt.close()
 pairs = [
     ("Area", "Convex Area"),
     ("Perimeter", "Major Axis Length"),
-    ("Major Axis Length", "Minor Axis Length"),
+    ("Major Axis Length", "Eccentricity"),
+    ("Extent", "Major Axis Length"),
+    ("Eccentricity", "Minor Axis Length"),
 ]
 
 for x_feature, y_feature in pairs:
