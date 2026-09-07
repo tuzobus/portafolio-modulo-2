@@ -233,6 +233,9 @@ X_train, X_val, X_test = z_score_scaling(X_train, X_val, X_test)
 
 
 # MODELO DE REGRESIÓN LOGÍSTICA
+print("\n---MODELO---")
+
+
 # Función sigmoide (convierte valores a una probabilidad entre 0 y 1)
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
