@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+OUTPUT_DIR = Path("histograms")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
 columns = [
     "Area",
@@ -134,7 +138,9 @@ plt.close()
 pairs = [
     ("Area", "Convex Area"),
     ("Perimeter", "Major Axis Length"),
-    ("Major Axis Length", "Minor Axis Length"),
+    ("Major Axis Length", "Eccentricity"),
+    ("Extent", "Major Axis Length"),
+    ("Eccentricity", "Minor Axis Length"),
 ]
 
 for x_feature, y_feature in pairs:
@@ -163,48 +169,79 @@ for x_feature, y_feature in pairs:
 # Para la regresión logística se le asigna 0 a Osmancik y 1 a Cammeo
 df["Class"] = df["Class"].map({"Osmancik": 0, "Cammeo": 1})
 
-# Como el dataset viene ordenado, se lleva a cabo un shuffle
+# Separación manual estratificada del dataset
+# 60% entrenamiento, 20% validación y 20% prueba
 np.random.seed(67)
-indices = np.random.permutation(len(df))
-df_shuffled = df.iloc[indices].reset_index(drop=True)
 
-# Separación del dataset en 80% para entrenamiento y 20% para testing
-train_size = int(len(df_shuffled) * 0.8)
+train_indices = []
+val_indices = []
+test_indices = []
 
-train_df = df_shuffled.iloc[:train_size]
-test_df = df_shuffled.iloc[train_size:]
+for class_value in [0, 1]:
+    class_indices = np.where(df["Class"].to_numpy() == class_value)[0]
+
+    np.random.shuffle(class_indices)
+
+    n = len(class_indices)
+
+    train_end = int(n * 0.6)
+    val_end = train_end + int(n * 0.2)
+
+    train_indices.extend(class_indices[:train_end])
+    val_indices.extend(class_indices[train_end:val_end])
+    test_indices.extend(class_indices[val_end:])
+
+# Shuffle dentro de cada conjunto
+np.random.shuffle(train_indices)
+np.random.shuffle(val_indices)
+np.random.shuffle(test_indices)
+
+train_df = df.iloc[train_indices].reset_index(drop=True)
+val_df = df.iloc[val_indices].reset_index(drop=True)
+test_df = df.iloc[test_indices].reset_index(drop=True)
 
 # Separación de las variables predictoras X y de la variable objetivo y
 X_train = train_df.drop(columns=["Class"]).to_numpy()
+X_val = val_df.drop(columns=["Class"]).to_numpy()
 X_test = test_df.drop(columns=["Class"]).to_numpy()
 
 y_train = train_df["Class"].to_numpy()
+y_val = val_df["Class"].to_numpy()
 y_test = test_df["Class"].to_numpy()
 
 print("\nDimensiones de los conjuntos:")
 print("X_train:", X_train.shape)
 print("y_train:", y_train.shape)
+print("X_val:", X_val.shape)
+print("y_val:", y_val.shape)
 print("X_test:", X_test.shape)
 print("y_test:", y_test.shape)
 
 
 # ESCALAMIENTO
 # Ya que las variables presentan escalas distintas,
-# se aplica mean scaling para estabilizar la gradiente descendente
-def mean_scaling(X_train, X_test):
+# se aplica z-score scaling para estabilizar la gradiente descendente
+def z_score_scaling(X_train, X_val, X_test):
     mean = np.mean(X_train, axis=0)
-    max_val = np.max(X_train, axis=0)
+    std = np.std(X_train, axis=0)
 
-    X_train_scaled = (X_train - mean) / max_val
-    X_test_scaled = (X_test - mean) / max_val
+    # Reemplaza ceros en std con 1 para evitar división por cero
+    std[std == 0] = 1
 
-    return X_train_scaled, X_test_scaled
+    X_train_scaled = (X_train - mean) / std
+    X_val_scaled = (X_val - mean) / std
+    X_test_scaled = (X_test - mean) / std
+
+    return X_train_scaled, X_val_scaled, X_test_scaled
 
 
-X_train, X_test = mean_scaling(X_train, X_test)
+X_train, X_val, X_test = z_score_scaling(X_train, X_val, X_test)
 
 
 # MODELO DE REGRESIÓN LOGÍSTICA
+print("\n---MODELO---")
+
+
 # Función sigmoide (convierte valores a una probabilidad entre 0 y 1)
 def sigmoid(z):
     return 1 / (1 + np.exp(-z))
@@ -290,11 +327,11 @@ print(bias)
 
 # Predicciones sobre datos utilizados y no utilizados durante el entrenamiento
 y_pred_train = predict(X_train, weights, bias)
-
+y_pred_val = predict(X_val, weights, bias)
 y_pred_test = predict(X_test, weights, bias)
 
 print("\nAccuracy train:", accuracy(y_train, y_pred_train))
-
+print("Accuracy validation:", accuracy(y_val, y_pred_val))
 print("Accuracy test:", accuracy(y_test, y_pred_test))
 
 
