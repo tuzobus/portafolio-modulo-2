@@ -1,7 +1,14 @@
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from sklearn.model_selection import GridSearchCV, train_test_split, StratifiedKFold
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    ConfusionMatrixDisplay,
+)
 from sklearn.ensemble import RandomForestClassifier
 
 columns = [
@@ -73,30 +80,84 @@ print(classification_report(y_val, val_pred))
 print("\nConfusion matrix:")
 print(confusion_matrix(y_val, val_pred))
 
+base_train_accuracy = train_accuracy
+base_val_accuracy = val_accuracy
+base_val_confusion = confusion_matrix(y_val, val_pred)
 
+
+# BÚSQUEDA OPCIONAL DE HIPERPARÁMETROS
 # Pruebas con hiperparámetros ajustados
-param_grid = {
-    "n_estimators": [100, 300, 500],
-    "max_depth": [None, 5, 10, 20],
-    "min_samples_split": [2, 5, 10],
-    "min_samples_leaf": [1, 2, 4],
-    "max_features": ["sqrt", "log2", 0.5],
-    "class_weight": [None, "balanced"],
-}
+# param_grid = {
+#     "n_estimators": [100, 300, 500],
+#     "max_depth": [None, 5, 10, 20],
+#     "min_samples_split": [2, 5, 10],
+#     "min_samples_leaf": [1, 2, 4],
+#     "max_features": ["sqrt", "log2", 0.5],
+#     "class_weight": [None, "balanced"],
+# }
 
-model = RandomForestClassifier(random_state=67)
+# model = RandomForestClassifier(random_state=67)
 
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=67)
+# cv = StratifiedKFold(
+#     n_splits=5,
+#     shuffle=True,
+#     random_state=67,
+# )
 
-grid_search = GridSearchCV(
-    model, param_grid, cv=cv, scoring="accuracy", n_jobs=-1, verbose=0
+# grid_search = GridSearchCV(
+#     model,
+#     param_grid,
+#     cv=cv,
+#     scoring="accuracy",
+#     n_jobs=-1,
+#     verbose=0,
+# )
+
+# grid_search.fit(X_train, y_train)
+
+# best = grid_search.best_estimator_
+
+# train_pred = best.predict(X_train)
+# val_pred = best.predict(X_val)
+
+# train_accuracy = accuracy_score(y_train, train_pred)
+# val_accuracy = accuracy_score(y_val, val_pred)
+
+# print("\nTUNED MODEL")
+# print("Train accuracy:", train_accuracy)
+# print("Validation accuracy:", val_accuracy)
+# print("Generalization gap:", train_accuracy - val_accuracy)
+
+# print("\nValidation classification report:")
+# print(classification_report(y_val, val_pred))
+
+# print("\nValidation confusion matrix:")
+# print(confusion_matrix(y_val, val_pred))
+
+# print("Best parameters:", grid_search.best_params_)
+# print("Best score:", grid_search.best_score_)
+
+
+# MODELO AJUSTADO
+# En caso de que no se desee correr la búsqueda de hiperparámetros,
+# se utilizan directamente los mejores hiperparámetros encontrados
+# previamente
+
+model = RandomForestClassifier(
+    class_weight=None,
+    max_depth=5,
+    max_features="sqrt",
+    min_samples_leaf=4,
+    min_samples_split=2,
+    n_estimators=100,
+    random_state=67,
 )
-grid_search.fit(X_train, y_train)
 
-best = grid_search.best_estimator_
+model.fit(X_train, y_train)
 
-train_pred = best.predict(X_train)
-val_pred = best.predict(X_val)
+
+train_pred = model.predict(X_train)
+val_pred = model.predict(X_val)
 
 train_accuracy = accuracy_score(y_train, train_pred)
 val_accuracy = accuracy_score(y_val, val_pred)
@@ -112,12 +173,14 @@ print(classification_report(y_val, val_pred))
 print("\nValidation confusion matrix:")
 print(confusion_matrix(y_val, val_pred))
 
-print("Best parameters:", grid_search.best_params_)
-print("Best score:", grid_search.best_score_)
+
+tuned_train_accuracy = train_accuracy
+tuned_val_accuracy = val_accuracy
+tuned_val_confusion = confusion_matrix(y_val, val_pred)
 
 
 # Actualización del modelo con mejores hiperparámetros encontrados
-test_pred = best.predict(X_test)
+test_pred = model.predict(X_test)
 test_accuracy = accuracy_score(y_test, test_pred)
 
 print("\nFINAL TEST")
@@ -129,50 +192,137 @@ print(classification_report(y_test, test_pred))
 print("\nConfusion matrix:")
 print(confusion_matrix(y_test, test_pred))
 
-# En caso de que no se desee correr la búsqueda de hiperparámetros,
-# se pueden comentar los 2 bloques anteriores y descomentar el siguiente,
-# que contiene los mejores hiperparámetros encontrados en una búsqueda
-# realizada con anterioridad.
 
-# model = RandomForestClassifier(
-#     class_weight=None,
-#     max_depth=5,
-#     max_features="sqrt",
-#     min_samples_leaf=4,
-#     min_samples_split=2,
-#     n_estimators=100,
-#     random_state=67,
-# )
-#
-# model.fit(X_train, y_train)
-#
-# # Train y Validation para diagnosticar fitting
-# train_pred = model.predict(X_train)
-# val_pred = model.predict(X_val)
-#
-# train_accuracy = accuracy_score(y_train, train_pred)
-# val_accuracy = accuracy_score(y_val, val_pred)
-#
-# print("\nTUNED MODEL")
-# print("Train accuracy:", train_accuracy)
-# print("Validation accuracy:", val_accuracy)
-# print("Generalization gap:", train_accuracy - val_accuracy)
-#
-# print("\nValidation classification report:")
-# print(classification_report(y_val, val_pred))
-#
-# print("\nValidation confusion matrix:")
-# print(confusion_matrix(y_val, val_pred))
-#
-# # Evaluación final
-# test_pred = model.predict(X_test)
-# test_accuracy = accuracy_score(y_test, test_pred)
-#
-# print("\nFINAL TEST")
-# print("Test accuracy:", test_accuracy)
-#
-# print("\nClassification report:")
-# print(classification_report(y_test, test_pred))
-#
-# print("\nConfusion matrix:")
-# print(confusion_matrix(y_test, test_pred))
+# 10 PREDICCIONES DE EJEMPLO
+test_probabilities = model.predict_proba(X_test)
+
+print("\n10 PREDICCIONES DE EJEMPLO")
+
+for i in range(10):
+    predicted_class = test_pred[i]
+    real_class = y_test.iloc[i]
+
+    predicted_name = "Cammeo" if predicted_class == 1 else "Osmancik"
+
+    real_name = "Cammeo" if real_class == 1 else "Osmancik"
+
+    cammeo_probability = test_probabilities[i, 1]
+
+    print(
+        f"Ejemplo {i + 1}: "
+        f"Probabilidad Cammeo = {cammeo_probability:.4f}, "
+        f"Predicción = {predicted_name}, "
+        f"Real = {real_name}"
+    )
+
+
+# GRÁFICA COMPARATIVA DE ACCURACY
+sets = ["Train", "Validation"]
+
+base_scores = [
+    base_train_accuracy,
+    base_val_accuracy,
+]
+
+tuned_scores = [
+    tuned_train_accuracy,
+    tuned_val_accuracy,
+]
+
+x = np.arange(len(sets))
+width = 0.35
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+base_bars = ax.bar(
+    x - width / 2,
+    base_scores,
+    width,
+    label="Modelo base",
+)
+
+tuned_bars = ax.bar(
+    x + width / 2,
+    tuned_scores,
+    width,
+    label="Modelo ajustado",
+)
+
+ax.set_ylabel("Exactitud (accuracy)")
+ax.set_title("Desempeño antes y después del ajuste")
+ax.set_xticks(x)
+ax.set_xticklabels(sets)
+ax.set_ylim(0, 1.08)
+ax.legend()
+ax.grid(axis="y", alpha=0.25)
+
+ax.bar_label(
+    base_bars,
+    labels=[f"{score * 100:.2f}%" for score in base_scores],
+    padding=3,
+)
+
+ax.bar_label(
+    tuned_bars,
+    labels=[f"{score * 100:.2f}%" for score in tuned_scores],
+    padding=3,
+)
+
+fig.tight_layout()
+
+plt.savefig(
+    "accuracy_comparison.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.close()
+
+
+# MATRICES DE CONFUSIÓN COMPARATIVAS
+fig, axes = plt.subplots(
+    1,
+    2,
+    figsize=(10, 4),
+)
+
+base_display = ConfusionMatrixDisplay(
+    confusion_matrix=base_val_confusion,
+    display_labels=["Osmancik", "Cammeo"],
+)
+
+base_display.plot(
+    ax=axes[0],
+    cmap="Blues",
+    colorbar=False,
+)
+
+axes[0].set_title("Modelo base - Validation")
+axes[0].set_xlabel("Clase predicha")
+axes[0].set_ylabel("Clase real")
+
+
+tuned_display = ConfusionMatrixDisplay(
+    confusion_matrix=tuned_val_confusion,
+    display_labels=["Osmancik", "Cammeo"],
+)
+
+tuned_display.plot(
+    ax=axes[1],
+    cmap="Blues",
+    colorbar=False,
+)
+
+axes[1].set_title("Modelo ajustado - Validation")
+axes[1].set_xlabel("Clase predicha")
+axes[1].set_ylabel("Clase real")
+
+fig.tight_layout()
+
+plt.savefig(
+    "validation_confusion_matrices.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.close()
