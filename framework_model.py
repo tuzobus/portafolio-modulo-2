@@ -11,6 +11,8 @@ from sklearn.metrics import (
 )
 from sklearn.ensemble import RandomForestClassifier
 
+RUN_GRID_SEARCH = False
+
 columns = [
     "Area",
     "Perimeter",
@@ -84,76 +86,52 @@ base_train_accuracy = train_accuracy
 base_val_accuracy = val_accuracy
 base_val_confusion = confusion_matrix(y_val, val_pred)
 
+if RUN_GRID_SEARCH:
+    param_grid = {
+        "n_estimators": [100, 300, 500],
+        "max_depth": [None, 5, 10, 20],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4],
+        "max_features": ["sqrt", "log2", 0.5],
+        "class_weight": [None, "balanced"],
+    }
 
-# BÚSQUEDA OPCIONAL DE HIPERPARÁMETROS
-# Pruebas con hiperparámetros ajustados
-# param_grid = {
-#     "n_estimators": [100, 300, 500],
-#     "max_depth": [None, 5, 10, 20],
-#     "min_samples_split": [2, 5, 10],
-#     "min_samples_leaf": [1, 2, 4],
-#     "max_features": ["sqrt", "log2", 0.5],
-#     "class_weight": [None, "balanced"],
-# }
+    search_model = RandomForestClassifier(random_state=67)
 
-# model = RandomForestClassifier(random_state=67)
+    cv = StratifiedKFold(
+        n_splits=5,
+        shuffle=True,
+        random_state=67,
+    )
 
-# cv = StratifiedKFold(
-#     n_splits=5,
-#     shuffle=True,
-#     random_state=67,
-# )
+    grid_search = GridSearchCV(
+        search_model,
+        param_grid,
+        cv=cv,
+        scoring="accuracy",
+        n_jobs=-1,
+        verbose=0,
+    )
 
-# grid_search = GridSearchCV(
-#     model,
-#     param_grid,
-#     cv=cv,
-#     scoring="accuracy",
-#     n_jobs=-1,
-#     verbose=0,
-# )
+    grid_search.fit(X_train, y_train)
 
-# grid_search.fit(X_train, y_train)
+    model = grid_search.best_estimator_
 
-# best = grid_search.best_estimator_
+    print("Best parameters:", grid_search.best_params_)
+    print("Best score:", grid_search.best_score_)
 
-# train_pred = best.predict(X_train)
-# val_pred = best.predict(X_val)
+else:
+    model = RandomForestClassifier(
+        class_weight=None,
+        max_depth=5,
+        max_features="sqrt",
+        min_samples_leaf=2,
+        min_samples_split=10,
+        n_estimators=300,
+        random_state=67,
+    )
 
-# train_accuracy = accuracy_score(y_train, train_pred)
-# val_accuracy = accuracy_score(y_val, val_pred)
-
-# print("\nTUNED MODEL")
-# print("Train accuracy:", train_accuracy)
-# print("Validation accuracy:", val_accuracy)
-# print("Generalization gap:", train_accuracy - val_accuracy)
-
-# print("\nValidation classification report:")
-# print(classification_report(y_val, val_pred))
-
-# print("\nValidation confusion matrix:")
-# print(confusion_matrix(y_val, val_pred))
-
-# print("Best parameters:", grid_search.best_params_)
-# print("Best score:", grid_search.best_score_)
-
-
-# MODELO AJUSTADO
-# En caso de que no se desee correr la búsqueda de hiperparámetros,
-# se utilizan directamente los mejores hiperparámetros encontrados
-# previamente
-
-model = RandomForestClassifier(
-    class_weight=None,
-    max_depth=5,
-    max_features="sqrt",
-    min_samples_leaf=4,
-    min_samples_split=2,
-    n_estimators=100,
-    random_state=67,
-)
-
-model.fit(X_train, y_train)
+    model.fit(X_train, y_train)
 
 
 train_pred = model.predict(X_train)
