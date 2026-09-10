@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from math import erfc, sqrt
 from pathlib import Path
 
 OUTPUT_DIR = Path("histograms")
@@ -165,49 +166,69 @@ for x_feature, y_feature in pairs:
     plt.close()
 
 
+MODEL_FEATURES = [
+    "Area",
+    "Perimeter",
+    "Major Axis Length",
+    "Minor Axis Length",
+    "Eccentricity",
+    "Extent",
+]
+
+
 # TRANSFORM
 # Para la regresión logística se le asigna 0 a Osmancik y 1 a Cammeo
 df["Class"] = df["Class"].map({"Osmancik": 0, "Cammeo": 1})
 
+
 # Separación manual estratificada del dataset
 # 60% entrenamiento, 20% validación y 20% prueba
-np.random.seed(67)
+def stratified_split_indices(y, seed=67):
+    rng = np.random.RandomState(seed)
+    train_indices = []
+    val_indices = []
+    test_indices = []
 
-train_indices = []
-val_indices = []
-test_indices = []
+    for class_value in [0, 1]:
+        class_indices = np.where(y == class_value)[0].copy()
 
-for class_value in [0, 1]:
-    class_indices = np.where(df["Class"].to_numpy() == class_value)[0]
+        rng.shuffle(class_indices)
+        n = len(class_indices)
 
-    np.random.shuffle(class_indices)
+        train_end = int(n * 0.60)
+        val_end = train_end + int(n * 0.20)
 
-    n = len(class_indices)
+        train_indices.extend(class_indices[:train_end])
+        val_indices.extend(class_indices[train_end:val_end])
+        test_indices.extend(class_indices[val_end:])
 
-    train_end = int(n * 0.6)
-    val_end = train_end + int(n * 0.2)
+    rng.shuffle(train_indices)
+    rng.shuffle(val_indices)
+    rng.shuffle(test_indices)
 
-    train_indices.extend(class_indices[:train_end])
-    val_indices.extend(class_indices[train_end:val_end])
-    test_indices.extend(class_indices[val_end:])
+    return (
+        np.array(train_indices),
+        np.array(val_indices),
+        np.array(test_indices),
+    )
 
-# Shuffle dentro de cada conjunto
-np.random.shuffle(train_indices)
-np.random.shuffle(val_indices)
-np.random.shuffle(test_indices)
 
-train_df = df.iloc[train_indices].reset_index(drop=True)
-val_df = df.iloc[val_indices].reset_index(drop=True)
-test_df = df.iloc[test_indices].reset_index(drop=True)
+y_all = df["Class"].to_numpy()
 
-# Separación de las variables predictoras X y de la variable objetivo y
-X_train = train_df.drop(columns=["Class"]).to_numpy()
-X_val = val_df.drop(columns=["Class"]).to_numpy()
-X_test = test_df.drop(columns=["Class"]).to_numpy()
+train_indices, val_indices, test_indices = stratified_split_indices(
+    y_all,
+    seed=67,
+)
 
-y_train = train_df["Class"].to_numpy()
-y_val = val_df["Class"].to_numpy()
-y_test = test_df["Class"].to_numpy()
+X_all = df[MODEL_FEATURES].to_numpy(dtype=float)
+
+X_train = X_all[train_indices]
+X_val = X_all[val_indices]
+X_test = X_all[test_indices]
+
+y_train = y_all[train_indices]
+y_val = y_all[val_indices]
+y_test = y_all[test_indices]
 
 print("\nDimensiones de los conjuntos:")
 print("X_train:", X_train.shape)
@@ -216,6 +237,17 @@ print("X_val:", X_val.shape)
 print("y_val:", y_val.shape)
 print("X_test:", X_test.shape)
 print("y_test:", y_test.shape)
+
+print("\nDistribución de clases:")
+
+for name, y_subset in [
+    ("Train", y_train),
+    ("Validation", y_val),
+    ("Test", y_test),
+]:
+    values, counts = np.unique(y_subset, return_counts=True)
+
+    print(name, dict(zip(values, counts)))
 
 
 # ESCALAMIENTO
@@ -264,37 +296,75 @@ def binary_cross_entropy(y, y_hat):
 
 
 # Función para entrenar los pesos y el bias mediante gradiente descendente por batch
-def train_logistic_regression(X, y, learning_rate, epochs):
-    n_samples, n_features = X.shape
+def train_logistic_regression(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    learning_rate,
+    epochs,
+):
+    n_samples, n_features = X_train.shape
 
     weights = np.zeros(n_features)
     bias = 0.0
 
-    losses = []
+    train_losses = []
+    val_losses = []
 
     for epoch in range(epochs):
+        # Predicción en train
+        train_probabilities = predict_probability(
+            X_train,
+            weights,
+            bias,
+        )
 
-        # 1. Hipótesis
-        y_hat = predict_probability(X, weights, bias)
+        # Loss de train
+        train_loss = binary_cross_entropy(
+            y_train,
+            train_probabilities,
+        )
 
-        # 2. Costo
-        loss = binary_cross_entropy(y, y_hat)
-        losses.append(loss)
+        train_losses.append(train_loss)
 
-        # 3. Gradientes
-        error = y_hat - y
+        # Loss de validation
+        val_probabilities = predict_probability(
+            X_val,
+            weights,
+            bias,
+        )
 
-        dw = (1 / n_samples) * np.dot(X.T, error)
+        val_loss = binary_cross_entropy(
+            y_val,
+            val_probabilities,
+        )
+
+        val_losses.append(val_loss)
+
+        # Gradientes
+        error = train_probabilities - y_train
+
+        dw = (1 / n_samples) * np.dot(X_train.T, error)
         db = (1 / n_samples) * np.sum(error)
 
-        # 4. Actualización de parámetros
+        # Actualización de parámetros
         weights = weights - learning_rate * dw
         bias = bias - learning_rate * db
 
         if epoch % 100 == 0:
-            print(f"Epoch {epoch}, " f"Loss: {loss:.6f}")
+            print(
+                f"Epoch {epoch}, "
+                f"Train loss: {train_loss:.6f}, "
+                f"Validation loss: {val_loss:.6f}"
+            )
 
-    return weights, bias, losses
+    return (
+        weights,
+        bias,
+        train_losses,
+        val_losses,
+    )
 
 
 # Función para convertir las probabilidades generadas por la sigmoide en clases
@@ -310,13 +380,116 @@ def accuracy(y_true, y_pred):
     return np.mean(y_true == y_pred) * 100
 
 
-# ENTRENAMIENTO Y EVALUACIÓN
+# Función para calcular precisión, recall y F1 para una clase específica
+def precision_recall_f1_for_class(
+    y_true,
+    y_pred,
+    class_value,
+):
+    tp = np.sum((y_true == class_value) & (y_pred == class_value))
 
+    fp = np.sum((y_true != class_value) & (y_pred == class_value))
+
+    fn = np.sum((y_true == class_value) & (y_pred != class_value))
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if (precision + recall) > 0
+        else 0.0
+    )
+
+    return precision, recall, f1
+
+
+def macro_f1(y_true, y_pred):
+    _, _, f1_osmancik = precision_recall_f1_for_class(
+        y_true,
+        y_pred,
+        0,
+    )
+
+    _, _, f1_cammeo = precision_recall_f1_for_class(
+        y_true,
+        y_pred,
+        1,
+    )
+
+    return (f1_osmancik + f1_cammeo) / 2
+
+
+def confusion_matrix_manual(y_true, y_pred):
+    osmancik_correct = np.sum((y_true == 0) & (y_pred == 0))
+
+    osmancik_as_cammeo = np.sum((y_true == 0) & (y_pred == 1))
+
+    cammeo_as_osmancik = np.sum((y_true == 1) & (y_pred == 0))
+
+    cammeo_correct = np.sum((y_true == 1) & (y_pred == 1))
+
+    return np.array(
+        [
+            [
+                osmancik_correct,
+                osmancik_as_cammeo,
+            ],
+            [
+                cammeo_as_osmancik,
+                cammeo_correct,
+            ],
+        ]
+    )
+
+
+def evaluate_predictions(
+    y_true,
+    y_pred,
+):
+    precision_0, recall_0, f1_0 = precision_recall_f1_for_class(
+        y_true,
+        y_pred,
+        0,
+    )
+
+    precision_1, recall_1, f1_1 = precision_recall_f1_for_class(
+        y_true,
+        y_pred,
+        1,
+    )
+
+    return {
+        "Accuracy": accuracy(
+            y_true,
+            y_pred,
+        )
+        / 100,
+        "Macro-F1": macro_f1(
+            y_true,
+            y_pred,
+        ),
+        "Osmancik Precision": precision_0,
+        "Osmancik Recall": recall_0,
+        "Osmancik F1": f1_0,
+        "Cammeo Precision": precision_1,
+        "Cammeo Recall": recall_1,
+        "Cammeo F1": f1_1,
+    }
+
+
+# ENTRENAMIENTO Y EVALUACIÓN
 learning_rate = 0.03
 epochs = 3000
 
-weights, bias, losses = train_logistic_regression(
-    X_train, y_train, learning_rate, epochs
+weights, bias, train_losses, val_losses = train_logistic_regression(
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    learning_rate,
+    epochs,
 )
 
 print("\nPesos finales:")
@@ -325,14 +498,161 @@ print(weights)
 print("\nBias:")
 print(bias)
 
+
+# ANÁLISIS ESTADÍSTICO DE LOS COEFICIENTES
+# Se utiliza una aproximación de Wald basada en
+# la matriz de información observada.
+
+X_design = np.column_stack(
+    [
+        np.ones(X_train.shape[0]),
+        X_train,
+    ]
+)
+
+beta = np.concatenate(
+    (
+        [bias],
+        weights,
+    )
+)
+
+train_probabilities = predict_probability(
+    X_train,
+    weights,
+    bias,
+)
+
+w_values = train_probabilities * (1 - train_probabilities)
+
+information_matrix = X_design.T @ (X_design * w_values[:, None])
+
+covariance_matrix = np.linalg.pinv(information_matrix)
+
+standard_errors = np.sqrt(
+    np.clip(
+        np.diag(covariance_matrix),
+        0,
+        None,
+    )
+)
+
+z_scores = np.divide(
+    beta,
+    standard_errors,
+    out=np.full_like(
+        beta,
+        np.nan,
+        dtype=float,
+    ),
+    where=standard_errors > 0,
+)
+
+p_values = np.array(
+    [
+        erfc(abs(z_value) / sqrt(2)) if np.isfinite(z_value) else np.nan
+        for z_value in z_scores
+    ]
+)
+
+odds_ratios = np.exp(beta)
+
+coefficient_names = [
+    "Intercept",
+    *MODEL_FEATURES,
+]
+
+coefficient_table = pd.DataFrame(
+    {
+        "Variable": coefficient_names,
+        "Coefficient": beta,
+        "Std. Error": standard_errors,
+        "Z": z_scores,
+        "p-value": p_values,
+        "Odds Ratio": odds_ratios,
+    }
+)
+
+coefficient_table["Significant (p < 0.05)"] = coefficient_table["p-value"] < 0.05
+
+
+print("\nCOEFICIENTES DEL MODELO")
+print(coefficient_table.round(6).to_string(index=False))
+
 # Predicciones sobre datos utilizados y no utilizados durante el entrenamiento
 y_pred_train = predict(X_train, weights, bias)
 y_pred_val = predict(X_val, weights, bias)
 y_pred_test = predict(X_test, weights, bias)
 
-print("\nAccuracy train:", accuracy(y_train, y_pred_train))
-print("Accuracy validation:", accuracy(y_val, y_pred_val))
-print("Accuracy test:", accuracy(y_test, y_pred_test))
+train_metrics = evaluate_predictions(
+    y_train,
+    y_pred_train,
+)
+
+val_metrics = evaluate_predictions(
+    y_val,
+    y_pred_val,
+)
+
+test_metrics = evaluate_predictions(
+    y_test,
+    y_pred_test,
+)
+
+
+results = pd.DataFrame(
+    [
+        {
+            "Set": "Train",
+            **train_metrics,
+        },
+        {
+            "Set": "Validation",
+            **val_metrics,
+        },
+        {
+            "Set": "Test",
+            **test_metrics,
+        },
+    ]
+)
+
+
+print("\nRESULTADOS DEL MODELO MANUAL")
+print(results.round(4).to_string(index=False))
+
+
+print("\nMatriz de confusión - Train:")
+print(
+    confusion_matrix_manual(
+        y_train,
+        y_pred_train,
+    )
+)
+
+print("\nMatriz de confusión - Validation:")
+print(
+    confusion_matrix_manual(
+        y_val,
+        y_pred_val,
+    )
+)
+
+print("\nMatriz de confusión - Test:")
+print(
+    confusion_matrix_manual(
+        y_test,
+        y_pred_test,
+    )
+)
+
+
+train_val_gap = train_metrics["Macro-F1"] - val_metrics["Macro-F1"]
+
+print(
+    "\nGeneralization gap " "(Train Macro-F1 - Validation Macro-F1):",
+    round(train_val_gap, 4),
+)
 
 
 # VISUALIZACIÓN DEL ENTRENAMIENTO
@@ -340,13 +660,31 @@ print("Accuracy test:", accuracy(y_test, y_pred_test))
 # a los parámetros por la disminución del costo
 plt.figure(figsize=(8, 5))
 
-plt.plot(losses)
+plt.plot(
+    train_losses,
+    label="Train",
+)
+
+plt.plot(
+    val_losses,
+    label="Validation",
+)
 
 plt.xlabel("Epoch")
-plt.ylabel("Binary Cross Entropy")
-plt.title("Evolución del costo durante el entrenamiento")
+plt.ylabel("Binary Cross-Entropy")
 
-plt.savefig("training_loss.png")
+plt.title("Training vs Validation Loss")
+
+plt.legend()
+
+plt.tight_layout()
+
+plt.savefig(
+    "training_validation_loss.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
 plt.close()
 
 
