@@ -2,16 +2,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from sklearn.model_selection import GridSearchCV, train_test_split, StratifiedKFold
 from sklearn.metrics import (
     accuracy_score,
+    f1_score,
     classification_report,
     confusion_matrix,
     ConfusionMatrixDisplay,
 )
 from sklearn.ensemble import RandomForestClassifier
-
-RUN_GRID_SEARCH = False
 
 columns = [
     "Area",
@@ -33,178 +31,279 @@ df = pd.read_csv(
 )
 
 
+MODEL_FEATURES = [
+    "Area",
+    "Perimeter",
+    "Major Axis Length",
+    "Minor Axis Length",
+    "Eccentricity",
+    "Extent",
+]
+
+
 # TRANSFORM
 # Se hace encoding de la variable objetivo para random forest,
 # se le asigna 0 a Osmancik y 1 a Cammeo
 df["Class"] = df["Class"].map({"Osmancik": 0, "Cammeo": 1})
 
 
-# Separación del dataset en columnas x y y.
-X = df.drop(columns=["Class"])
+# Separación manual estratificada del dataset
+# 60% entrenamiento, 20% validación y 20% prueba
+def stratified_split_indices(y, seed=67):
+    rng = np.random.RandomState(seed)
+
+    train_indices = []
+    val_indices = []
+    test_indices = []
+
+    for class_value in [0, 1]:
+        class_indices = np.where(y == class_value)[0].copy()
+
+        rng.shuffle(class_indices)
+        n = len(class_indices)
+
+        train_end = int(n * 0.60)
+        val_end = train_end + int(n * 0.20)
+
+        train_indices.extend(class_indices[:train_end])
+        val_indices.extend(class_indices[train_end:val_end])
+        test_indices.extend(class_indices[val_end:])
+
+    rng.shuffle(train_indices)
+    rng.shuffle(val_indices)
+    rng.shuffle(test_indices)
+
+    return (
+        np.array(train_indices),
+        np.array(val_indices),
+        np.array(test_indices),
+    )
+
+
+y_all = df["Class"].to_numpy()
+
+train_indices, val_indices, test_indices = stratified_split_indices(
+    y_all,
+    seed=67,
+)
+
+X = df[MODEL_FEATURES]
 y = df["Class"]
 
-# Separación del dataset en 60% para entrenamiento y 40% para validation y test
-# Como el dataset viene ordenado, se tiene que hacer shuffle, pero ahora se
-# puede aprovechar train_test_split de sklearn en vez de hacerlo manualmente
-# con la librería random y numpy. Esto también permite usar stratify, que
-# asegura que la proporción de clases se mantenga en los conjuntos de train,
-# validation y test (pues el dataset original de 2 clases está desbalanceado,
-# 57% de Osmanik y un 43% de Cammeo)
+X_train = X.iloc[train_indices]
+X_val = X.iloc[val_indices]
+X_test = X.iloc[test_indices]
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=67, stratify=y
-)
+y_train = y.iloc[train_indices]
+y_val = y.iloc[val_indices]
+y_test = y.iloc[test_indices]
 
-X_train, X_val, y_train, y_val = train_test_split(
-    X_train, y_train, test_size=0.25, random_state=67, stratify=y_train
-)
+
+print("\nDimensiones de los conjuntos:")
+print("X_train:", X_train.shape)
+print("y_train:", y_train.shape)
+print("X_val:", X_val.shape)
+print("y_val:", y_val.shape)
+print("X_test:", X_test.shape)
+print("y_test:", y_test.shape)
+
+print("\nDistribución de clases:")
+
+for name, y_subset in [
+    ("Train", y_train),
+    ("Validation", y_val),
+    ("Test", y_test),
+]:
+    print(name, y_subset.value_counts().sort_index().to_dict())
 
 
 # MODELO DE RANDOM FOREST
 # Este primer modelo no tiene hiperparámetros ajustados
-model = RandomForestClassifier(random_state=67)
+base_model = RandomForestClassifier(random_state=67)
 
-model.fit(X_train, y_train)
+base_model.fit(X_train, y_train)
 
-train_pred = model.predict(X_train)
-val_pred = model.predict(X_val)
+base_train_pred = base_model.predict(X_train)
+base_val_pred = base_model.predict(X_val)
 
-train_accuracy = accuracy_score(y_train, train_pred)
-val_accuracy = accuracy_score(y_val, val_pred)
+base_train_accuracy = accuracy_score(y_train, base_train_pred)
 
-print("Train accuracy:", train_accuracy)
-print("Validation accuracy:", val_accuracy)
-print("Generalization gap:", train_accuracy - val_accuracy)
+base_val_accuracy = accuracy_score(y_val, base_val_pred)
 
-print("\nClassification report:")
-print(classification_report(y_val, val_pred))
+base_train_f1 = f1_score(
+    y_train,
+    base_train_pred,
+    average="macro",
+)
 
-print("\nConfusion matrix:")
-print(confusion_matrix(y_val, val_pred))
+base_val_f1 = f1_score(
+    y_val,
+    base_val_pred,
+    average="macro",
+)
 
-base_train_accuracy = train_accuracy
-base_val_accuracy = val_accuracy
-base_val_confusion = confusion_matrix(y_val, val_pred)
+base_f1_gap = base_train_f1 - base_val_f1
 
-if RUN_GRID_SEARCH:
-    param_grid = {
-        "n_estimators": [100, 300, 500],
-        "max_depth": [None, 5, 10, 20],
-        "min_samples_split": [2, 5, 10],
-        "min_samples_leaf": [1, 2, 4],
-        "max_features": ["sqrt", "log2", 0.5],
-        "class_weight": [None, "balanced"],
-    }
-
-    search_model = RandomForestClassifier(random_state=67)
-
-    cv = StratifiedKFold(
-        n_splits=5,
-        shuffle=True,
-        random_state=67,
-    )
-
-    grid_search = GridSearchCV(
-        search_model,
-        param_grid,
-        cv=cv,
-        scoring="accuracy",
-        n_jobs=-1,
-        verbose=0,
-    )
-
-    grid_search.fit(X_train, y_train)
-
-    model = grid_search.best_estimator_
-
-    print("Best parameters:", grid_search.best_params_)
-    print("Best score:", grid_search.best_score_)
-
-else:
-    model = RandomForestClassifier(
-        class_weight=None,
-        max_depth=5,
-        max_features="sqrt",
-        min_samples_leaf=2,
-        min_samples_split=10,
-        n_estimators=300,
-        random_state=67,
-    )
-
-    model.fit(X_train, y_train)
+base_val_confusion = confusion_matrix(y_val, base_val_pred)
 
 
-train_pred = model.predict(X_train)
-val_pred = model.predict(X_val)
+print("\n-----")
+print("RANDOM FOREST BASE")
 
-train_accuracy = accuracy_score(y_train, train_pred)
-val_accuracy = accuracy_score(y_val, val_pred)
+print("Train Macro-F1:", round(base_train_f1, 4))
 
-print("\nTUNED MODEL")
-print("Train accuracy:", train_accuracy)
-print("Validation accuracy:", val_accuracy)
-print("Generalization gap:", train_accuracy - val_accuracy)
+print("Validation Macro-F1:", round(base_val_f1, 4))
+
+print("Generalization gap (Macro-F1):", round(base_f1_gap, 4))
+
+print("\nTrain accuracy:", round(base_train_accuracy, 4))
+
+print("Validation accuracy:", round(base_val_accuracy, 4))
+
 
 print("\nValidation classification report:")
-print(classification_report(y_val, val_pred))
+
+print(
+    classification_report(
+        y_val,
+        base_val_pred,
+        target_names=[
+            "Osmancik",
+            "Cammeo",
+        ],
+    )
+)
+
 
 print("\nValidation confusion matrix:")
-print(confusion_matrix(y_val, val_pred))
+
+print(base_val_confusion)
 
 
-tuned_train_accuracy = train_accuracy
-tuned_val_accuracy = val_accuracy
-tuned_val_confusion = confusion_matrix(y_val, val_pred)
+# RANDOM FOREST AJUSTADO
+#
+# Esta configuración se modifica manualmente entre ejecuciones
+# de acuerdo con los resultados obtenidos en train y validation.
+
+adjusted_model = RandomForestClassifier(
+    max_depth=10,
+    random_state=67,
+)
+
+adjusted_model.fit(X_train, y_train)
 
 
-# Actualización del modelo con mejores hiperparámetros encontrados
-test_pred = model.predict(X_test)
-test_accuracy = accuracy_score(y_test, test_pred)
+adjusted_train_pred = adjusted_model.predict(X_train)
 
-print("\nFINAL TEST")
-print("Test accuracy:", test_accuracy)
-
-print("\nClassification report:")
-print(classification_report(y_test, test_pred))
-
-print("\nConfusion matrix:")
-print(confusion_matrix(y_test, test_pred))
+adjusted_val_pred = adjusted_model.predict(X_val)
 
 
-# 10 PREDICCIONES DE EJEMPLO
-test_probabilities = model.predict_proba(X_test)
+adjusted_train_accuracy = accuracy_score(
+    y_train,
+    adjusted_train_pred,
+)
 
-print("\n10 PREDICCIONES DE EJEMPLO")
+adjusted_val_accuracy = accuracy_score(
+    y_val,
+    adjusted_val_pred,
+)
 
-for i in range(10):
-    predicted_class = test_pred[i]
-    real_class = y_test.iloc[i]
 
-    predicted_name = "Cammeo" if predicted_class == 1 else "Osmancik"
+adjusted_train_f1 = f1_score(
+    y_train,
+    adjusted_train_pred,
+    average="macro",
+)
 
-    real_name = "Cammeo" if real_class == 1 else "Osmancik"
+adjusted_val_f1 = f1_score(
+    y_val,
+    adjusted_val_pred,
+    average="macro",
+)
 
-    cammeo_probability = test_probabilities[i, 1]
+adjusted_f1_gap = adjusted_train_f1 - adjusted_val_f1
 
-    print(
-        f"Ejemplo {i + 1}: "
-        f"Probabilidad Cammeo = {cammeo_probability:.4f}, "
-        f"Predicción = {predicted_name}, "
-        f"Real = {real_name}"
+adjusted_val_confusion = confusion_matrix(
+    y_val,
+    adjusted_val_pred,
+)
+
+
+print("\n-----")
+print("RANDOM FOREST AJUSTADO")
+
+print("Train Macro-F1:", round(adjusted_train_f1, 4))
+
+print("Validation Macro-F1:", round(adjusted_val_f1, 4))
+
+print("Generalization gap (Macro-F1):", round(adjusted_f1_gap, 4))
+
+print("\nTrain accuracy:", round(adjusted_train_accuracy, 4))
+
+print("Validation accuracy:", round(adjusted_val_accuracy, 4))
+
+
+print("\nValidation classification report:")
+
+print(
+    classification_report(
+        y_val,
+        adjusted_val_pred,
+        target_names=[
+            "Osmancik",
+            "Cammeo",
+        ],
     )
+)
 
 
-# GRÁFICA COMPARATIVA DE ACCURACY
-sets = ["Train", "Validation"]
+print("\nValidation confusion matrix:")
 
-base_scores = [
-    base_train_accuracy,
-    base_val_accuracy,
+print(adjusted_val_confusion)
+
+
+comparison_table = pd.DataFrame(
+    [
+        {
+            "Model": "Random Forest Base",
+            "Train Macro-F1": base_train_f1,
+            "Validation Macro-F1": base_val_f1,
+            "F1 Gap": base_f1_gap,
+            "Train Accuracy": base_train_accuracy,
+            "Validation Accuracy": base_val_accuracy,
+        },
+        {
+            "Model": "Random Forest Adjusted",
+            "Train Macro-F1": adjusted_train_f1,
+            "Validation Macro-F1": adjusted_val_f1,
+            "F1 Gap": adjusted_f1_gap,
+            "Train Accuracy": adjusted_train_accuracy,
+            "Validation Accuracy": adjusted_val_accuracy,
+        },
+    ]
+)
+
+
+print("\n-----")
+print("Comparación")
+
+print(comparison_table.round(4).to_string(index=False))
+
+
+# GRÁFICA COMPARATIVA DE MACRO-F1
+sets = [
+    "Train",
+    "Validation",
 ]
 
-tuned_scores = [
-    tuned_train_accuracy,
-    tuned_val_accuracy,
+base_scores = [
+    base_train_f1,
+    base_val_f1,
+]
+
+adjusted_scores = [
+    adjusted_train_f1,
+    adjusted_val_f1,
 ]
 
 x = np.arange(len(sets))
@@ -219,37 +318,45 @@ base_bars = ax.bar(
     label="Modelo base",
 )
 
-tuned_bars = ax.bar(
+adjusted_bars = ax.bar(
     x + width / 2,
-    tuned_scores,
+    adjusted_scores,
     width,
     label="Modelo ajustado",
 )
 
-ax.set_ylabel("Exactitud (accuracy)")
+ax.set_ylabel("Macro-F1")
+
 ax.set_title("Desempeño antes y después del ajuste")
+
 ax.set_xticks(x)
 ax.set_xticklabels(sets)
+
 ax.set_ylim(0, 1.08)
+
 ax.legend()
-ax.grid(axis="y", alpha=0.25)
+
+ax.grid(
+    axis="y",
+    alpha=0.25,
+)
 
 ax.bar_label(
     base_bars,
-    labels=[f"{score * 100:.2f}%" for score in base_scores],
+    labels=[f"{score:.4f}" for score in base_scores],
     padding=3,
 )
 
 ax.bar_label(
-    tuned_bars,
-    labels=[f"{score * 100:.2f}%" for score in tuned_scores],
+    adjusted_bars,
+    labels=[f"{score:.4f}" for score in adjusted_scores],
     padding=3,
 )
 
 fig.tight_layout()
 
 plt.savefig(
-    "accuracy_comparison.png",
+    "f1_comparison.png",
     dpi=300,
     bbox_inches="tight",
 )
@@ -266,7 +373,10 @@ fig, axes = plt.subplots(
 
 base_display = ConfusionMatrixDisplay(
     confusion_matrix=base_val_confusion,
-    display_labels=["Osmancik", "Cammeo"],
+    display_labels=[
+        "Osmancik",
+        "Cammeo",
+    ],
 )
 
 base_display.plot(
@@ -280,12 +390,15 @@ axes[0].set_xlabel("Clase predicha")
 axes[0].set_ylabel("Clase real")
 
 
-tuned_display = ConfusionMatrixDisplay(
-    confusion_matrix=tuned_val_confusion,
-    display_labels=["Osmancik", "Cammeo"],
+adjusted_display = ConfusionMatrixDisplay(
+    confusion_matrix=adjusted_val_confusion,
+    display_labels=[
+        "Osmancik",
+        "Cammeo",
+    ],
 )
 
-tuned_display.plot(
+adjusted_display.plot(
     ax=axes[1],
     cmap="Blues",
     colorbar=False,
