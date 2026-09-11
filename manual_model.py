@@ -53,6 +53,43 @@ print(df["Class"].value_counts())
 print("\nDistribución porcentual de clases:")
 print(df["Class"].value_counts(normalize=True) * 100)
 
+
+# Gráfico de barras para visualizar el balance entre las clases
+class_counts = df["Class"].value_counts()
+
+plt.figure(figsize=(7, 5))
+
+bars = plt.bar(
+    class_counts.index,
+    class_counts.values,
+    color=["steelblue", "darkorange"],
+)
+
+plt.xlabel("Clase")
+plt.ylabel("Número de observaciones")
+plt.title("Distribución de clases")
+
+for bar in bars:
+    height = bar.get_height()
+
+    plt.text(
+        bar.get_x() + bar.get_width() / 2,
+        height,
+        f"{int(height)}",
+        ha="center",
+        va="bottom",
+    )
+
+plt.tight_layout()
+
+plt.savefig(
+    "class_distribution.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.close()
+
 # Estadística descriptiva de las variables numéricas
 print("\nEstadística descriptiva:")
 print(df.describe())
