@@ -11,6 +11,8 @@ from sklearn.metrics import (
 )
 from sklearn.ensemble import RandomForestClassifier
 
+from manual_model import plot_confusion_matrix
+
 columns = [
     "Area",
     "Perimeter",
@@ -186,7 +188,7 @@ print(base_val_confusion)
 # de acuerdo con los resultados obtenidos en train y validation.
 
 adjusted_model = RandomForestClassifier(
-    max_depth=10,
+    max_depth=2,
     random_state=67,
 )
 
@@ -412,6 +414,85 @@ fig.tight_layout()
 
 plt.savefig(
     "validation_confusion_matrices.png",
+    dpi=300,
+    bbox_inches="tight",
+)
+
+plt.close()
+
+test_pred = adjusted_model.predict(X_test)
+
+test_macro_f1 = f1_score(
+    y_test,
+    test_pred,
+    average="macro",
+)
+
+test_accuracy = accuracy_score(
+    y_test,
+    test_pred,
+)
+
+print("\n-----")
+print("FINAL TEST")
+
+print("Test Macro-F1:", round(test_macro_f1, 4))
+
+print("Test accuracy:", round(test_accuracy, 4))
+
+print("\nTest classification report:")
+print(
+    classification_report(
+        y_test,
+        test_pred,
+        target_names=[
+            "Osmancik",
+            "Cammeo",
+        ],
+    )
+)
+
+final_test_confusion = confusion_matrix(
+    y_test,
+    test_pred,
+)
+
+plot_confusion_matrix(
+    final_test_confusion,
+    "Random Forest final - Test",
+    "random_forest_test_confusion.png",
+)
+
+print("\nTest confusion matrix:")
+print(final_test_confusion)
+
+# MATRIZ DE CONFUSIÓN DEL TEST FINAL
+test_display = ConfusionMatrixDisplay(
+    confusion_matrix=final_test_confusion,
+    display_labels=[
+        "Osmancik",
+        "Cammeo",
+    ],
+)
+
+fig, ax = plt.subplots(figsize=(5, 4))
+
+test_display.plot(
+    ax=ax,
+    cmap="Blues",
+    colorbar=False,
+)
+
+ax.set_title("Random Forest final - Test")
+
+ax.set_xlabel("Clase predicha")
+
+ax.set_ylabel("Clase real")
+
+fig.tight_layout()
+
+plt.savefig(
+    "random_forest_test_confusion.png",
     dpi=300,
     bbox_inches="tight",
 )

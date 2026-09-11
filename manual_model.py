@@ -745,3 +745,76 @@ for i in range(10):
         f"Predicción = {predicted_name}, "
         f"Real = {real_name}"
     )
+
+
+test_confusion = confusion_matrix_manual(
+    y_test,
+    y_pred_test,
+)
+
+
+def plot_confusion_matrix(
+    matrix,
+    title,
+    filename,
+):
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    ax.imshow(
+        matrix,
+        cmap="Blues",
+        vmin=0,
+        vmax=436,
+    )
+
+    threshold = matrix.max() / 2
+
+    for i in range(2):
+        for j in range(2):
+            ax.text(
+                j,
+                i,
+                matrix[i, j],
+                ha="center",
+                va="center",
+                color=("white" if matrix[i, j] > threshold else "black"),
+            )
+
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+
+    ax.set_xticklabels(
+        [
+            "Osmancik",
+            "Cammeo",
+        ]
+    )
+
+    ax.set_yticklabels(
+        [
+            "Osmancik",
+            "Cammeo",
+        ]
+    )
+
+    ax.set_xlabel("Clase predicha")
+    ax.set_ylabel("Clase real")
+
+    ax.set_title(title)
+
+    fig.tight_layout()
+
+    plt.savefig(
+        filename,
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    plt.close()
+
+
+plot_confusion_matrix(
+    test_confusion,
+    "Regresión logística - Test",
+    "logistic_regression_test_confusion.png",
+)
