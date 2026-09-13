@@ -173,6 +173,7 @@ print(
             "Osmancik",
             "Cammeo",
         ],
+        digits=4,
     )
 )
 
@@ -255,6 +256,7 @@ print(
             "Osmancik",
             "Cammeo",
         ],
+        digits=4,
     )
 )
 
@@ -449,6 +451,7 @@ print(
             "Osmancik",
             "Cammeo",
         ],
+        digits=4,
     )
 )
 
